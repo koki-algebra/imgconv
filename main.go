@@ -9,7 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/trace"
-	"sync"
+
+	"golang.org/x/sync/errgroup"
 )
 
 func main() {
@@ -48,34 +49,27 @@ func convertAll(ctx context.Context, files []string) error {
 	ctx, task := trace.NewTask(ctx, "convert all")
 	defer task.End()
 
-	var (
-		wg   sync.WaitGroup
-		mu   sync.Mutex
-		rerr error
-	)
+	eg, ctx := errgroup.WithContext(ctx)
+	eg.SetLimit(10)
 
 	for _, file := range files {
 		file := file
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if err := convert(ctx, file); err != nil {
-				mu.Lock()
-				if rerr == nil {
-					rerr = err
-				}
-				mu.Unlock()
-			}
-		}()
+		eg.Go(func() error {
+			return convert(ctx, file)
+		})
 	}
 
-	wg.Wait()
-
-	return nil
+	return eg.Wait()
 }
 
 func convert(ctx context.Context, file string) (rerr error) {
 	defer trace.StartRegion(ctx, "convert "+file).End()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
 
 	src, err := os.Open(file)
 	if err != nil {
