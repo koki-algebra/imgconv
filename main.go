@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/trace"
+	"sync"
 )
 
 func main() {
@@ -47,11 +48,28 @@ func convertAll(ctx context.Context, files []string) error {
 	ctx, task := trace.NewTask(ctx, "convert all")
 	defer task.End()
 
+	var (
+		wg   sync.WaitGroup
+		mu   sync.Mutex
+		rerr error
+	)
+
 	for _, file := range files {
-		if err := convert(ctx, file); err != nil {
-			return err
-		}
+		file := file
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := convert(ctx, file); err != nil {
+				mu.Lock()
+				if rerr == nil {
+					rerr = err
+				}
+				mu.Unlock()
+			}
+		}()
 	}
+
+	wg.Wait()
 
 	return nil
 }
