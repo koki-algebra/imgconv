@@ -8,6 +8,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"runtime/trace"
 )
 
 func main() {
@@ -19,6 +20,33 @@ func main() {
 }
 
 func run(ctx context.Context, files []string) error {
+	file, err := os.Create("trace.out")
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	if err := trace.Start(file); err != nil {
+		return err
+	}
+
+	if err := convertAll(ctx, files); err != nil {
+		return err
+	}
+
+	trace.Stop()
+
+	if err := file.Sync(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func convertAll(ctx context.Context, files []string) error {
+	ctx, task := trace.NewTask(ctx, "convert all")
+	defer task.End()
+
 	for _, file := range files {
 		if err := convert(ctx, file); err != nil {
 			return err
@@ -29,6 +57,8 @@ func run(ctx context.Context, files []string) error {
 }
 
 func convert(ctx context.Context, file string) (rerr error) {
+	defer trace.StartRegion(ctx, "convert "+file).End()
+
 	src, err := os.Open(file)
 	if err != nil {
 		return err
