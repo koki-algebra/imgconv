@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime/trace"
 
+	"github.com/sourcegraph/conc/panics"
 	"github.com/sourcegraph/conc/pool"
 )
 
@@ -53,8 +54,19 @@ func convertAll(ctx context.Context, files []string) error {
 
 	for _, file := range files {
 		file := file
-		pool.Go(func(ctx context.Context) error {
-			return convert(ctx, file)
+		pool.Go(func(ctx context.Context) (rerr error) {
+			var c panics.Catcher
+			defer func() {
+				if r := c.Recovered(); r != nil {
+					rerr = r.AsError()
+				}
+			}()
+
+			c.Try(func() {
+				rerr = convert(ctx, file)
+			})
+
+			return
 		})
 	}
 
