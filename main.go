@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"runtime/trace"
 
-	"golang.org/x/sync/errgroup"
+	"github.com/sourcegraph/conc/pool"
 )
 
 func main() {
@@ -49,17 +49,16 @@ func convertAll(ctx context.Context, files []string) error {
 	ctx, task := trace.NewTask(ctx, "convert all")
 	defer task.End()
 
-	eg, ctx := errgroup.WithContext(ctx)
-	eg.SetLimit(10)
+	pool := pool.New().WithErrors().WithContext(ctx)
 
 	for _, file := range files {
 		file := file
-		eg.Go(func() error {
+		pool.Go(func(ctx context.Context) error {
 			return convert(ctx, file)
 		})
 	}
 
-	return eg.Wait()
+	return pool.Wait()
 }
 
 func convert(ctx context.Context, file string) (rerr error) {
